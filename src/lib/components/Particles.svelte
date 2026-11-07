@@ -33,11 +33,12 @@
 		normalLocal
 	} from 'three/tsl'
 
+	import { settings, type ShapeType } from '#lib/settings.svelte'
+
 	const { randFloatSpread, randFloat } = MathUtils
 
 	// Init-only config (was the options object passed to createDataViz).
 	const config = {
-		type: 'octahedron' as 'box' | 'octahedron' | 'sphere' | 'circle' | 'plane',
 		count: 16384,
 		size: 1,
 		attractionIntensity: 1,
@@ -121,7 +122,7 @@
 	})().compute(count)
 
 	/* ───────────── Geometry, material, instanced mesh ───────────── */
-	function buildGeometry(type: typeof config.type) {
+	function buildGeometry(type: ShapeType) {
 		switch (type) {
 			case 'box':
 				return new BoxGeometry()
@@ -135,16 +136,23 @@
 				return new PlaneGeometry()
 		}
 	}
+	let currentType = settings.shape
+	let geometry = buildGeometry(currentType)
 
-	const geometry = buildGeometry(config.type)
 	const material = new MeshStandardNodeMaterial({
 		metalness: config.metalness,
 		roughness: config.roughness
 	})
 	// Solid shapes: front faces only. Flat shapes (circle/plane): double-sided.
-	material.side = ['box', 'octahedron', 'sphere'].includes(config.type) ? FrontSide : DoubleSide
-	material.flatShading = config.type === 'sphere'
+	// material.side = ['box', 'octahedron', 'sphere'].includes(config.type) ? FrontSide : DoubleSide
+	// material.flatShading = config.type === 'sphere'
 	material.colorNode = colorBuffer.toAttribute()
+
+	function applyMaterialFor(type: ShapeType) {
+		material.side = ['box', 'octahedron', 'sphere'].includes(type) ? FrontSide : DoubleSide
+		material.flatShading = type === 'sphere'
+	}
+	applyMaterialFor(currentType)
 
 	const positionAttr = positionBuffer.toAttribute()
 	const rotationAttr = rotationBuffer.toAttribute()
@@ -158,22 +166,33 @@
 
 	const mesh = new InstancedMesh(geometry, material, count)
 	mesh.frustumCulled = false // particles move on the GPU; CPU bounds would be wrong
+	/* handle updates */
+	$effect(() => {
+		const type = settings.shape
+		if (type === currentType) return
+		currentType = type
 
-	/* ───────────── Pointer → point on the z=0 plane ─────────────
-	 * One AbortController removes every listener on teardown, so no bound-function
-	 * identity problem like the original #removeListeners had. */
+		const old = geometry
+		geometry = buildGeometry(type)
+		mesh.geometry = geometry
+		applyMaterialFor(type)
+		material.needsUpdate = true // flatShading/side changes need a pipeline rebuild
+		old.dispose()
+	})
+	/* ───────────── Pointer → point on the z=0 plane ───────────── */
 	const raycaster = new Raycaster()
 	const plane = new Plane(new Vector3(0, 0, 1), 0)
 	const ndc = new Vector2()
 	const hit = new Vector3()
 
+	// needed for OrbitControls
 	const camDir = new Vector3()
 	const origin = new Vector3()
 
 	function updatePointer(e: PointerEvent) {
 		const cam = camera.current
 		if (!cam) return
-		// plane through the origin, facing the camera
+		// plane through the origin, facing the camera (OrbitControls)
 		cam.getWorldDirection(camDir)
 		plane.setFromNormalAndCoplanarPoint(camDir, origin)
 
@@ -214,7 +233,7 @@
 			.then(() => {
 				click.value = 0 // the click impulse lasts exactly one compute pass
 			})
-			.catch((err: unknown) => console.error('particle compute failed', err))
+			.catch((err: unknown) => console.error('In Particles.svelte: particle compute failed', err))
 			.finally(() => {
 				computing = false
 			})
@@ -237,6 +256,6 @@
 <!-- dispose={false}: we created these objects, so we dispose them ourselves above -->
 <T is={mesh} dispose={false}>
 	<!-- Warm light from lower-left, cool light from upper-right -->
-	<T.DirectionalLight color="#ff9060" intensity={5} position={[-50, -50, 0]} />
-	<T.DirectionalLight color="#6090ff" intensity={5} position={[50, 50, 0]} />
+	<T.DirectionalLight color={settings.lowerLeft} intensity={5} position={[-50, -50, 0]} />
+	<T.DirectionalLight color={settings.upperRight} intensity={5} position={[50, 50, 0]} />
 </T>

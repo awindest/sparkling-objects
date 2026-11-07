@@ -3,11 +3,14 @@
 	import { NoToneMapping } from 'three'
 	import { WebGPURenderer } from 'three/webgpu'
 	import Scene from '#lib/components/Scene.svelte'
+	import Hamburger from '#lib/components/Hamburger.svelte'
 
 	// Threlte owns resize + pixel-ratio handling, so the whole DataViz shell
 	// (resize/visibility listeners, observers, debounce timer) is no longer needed.
 	const createRenderer = (canvas: HTMLCanvasElement) =>
 		new WebGPURenderer({ canvas, alpha: true, antialias: true })
+
+	let open = $state(false)
 </script>
 
 <div class="app">
@@ -15,6 +18,7 @@
 	<Canvas {createRenderer} toneMapping={NoToneMapping}>
 		<Scene />
 	</Canvas>
+	<Hamburger bind:open />
 </div>
 
 <style>
